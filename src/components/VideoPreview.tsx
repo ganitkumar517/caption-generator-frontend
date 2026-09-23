@@ -27,7 +27,7 @@ const VideoPreview = ({
   durationSeconds,
 }: VideoPreviewProps) => {
   const [isRendering, setIsRendering] = useState(false);
-  const [downloadUrl, setDownloadUrl] = useState<string>("");
+  const [exportDone, setExportDone] = useState(false);
   const [durationInFrames, setDurationInFrames] = useState(
     Math.ceil(MAX_VIDEO_DURATION_SECONDS * FPS)
   );
@@ -94,7 +94,7 @@ const VideoPreview = ({
 
   const handleExport = async () => {
     setIsRendering(true);
-    setDownloadUrl("");
+    setExportDone(false);
 
     toast({
       title: "Export started",
@@ -112,9 +112,8 @@ const VideoPreview = ({
       console.log("Export successful:", result);
 
       const filename = result.filename || "captioned-video.mp4";
-      setDownloadUrl(result.downloadUrl);
-
       await triggerFileDownload(result.downloadUrl, filename);
+      setExportDone(true);
 
       toast({
         title: "Export complete!",
@@ -165,20 +164,6 @@ const VideoPreview = ({
     }
   };
 
-  const handleDownload = async () => {
-    if (!downloadUrl) return;
-    try {
-      await triggerFileDownload(downloadUrl, "captioned-video.mp4");
-    } catch (error) {
-      console.error("Download error:", error);
-      toast({
-        title: "Download failed",
-        description: "Could not save the video. Try Export again.",
-        variant: "destructive",
-      });
-    }
-  };
-
   return (
     <Card className="p-6 space-y-4 bg-card/50 backdrop-blur-sm border-border/50">
       <div className="flex items-center justify-between">
@@ -193,17 +178,6 @@ const VideoPreview = ({
         </div>
 
         <div className="flex gap-2">
-          {downloadUrl && (
-            <Button
-              onClick={handleDownload}
-              variant="outline"
-              className="border-primary/50 hover:bg-primary/10"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Download Again
-            </Button>
-          )}
-
           {captions.length > 0 && (
             <Button
               onClick={handleExport}
@@ -264,7 +238,7 @@ const VideoPreview = ({
         </div>
       )}
 
-      {downloadUrl && !isRendering && (
+      {exportDone && !isRendering && (
         <div className="flex items-center gap-2 text-sm p-4 bg-green-500/10 rounded-lg border border-green-500/20">
           <svg
             className="w-5 h-5 text-green-600 flex-shrink-0"
@@ -281,16 +255,16 @@ const VideoPreview = ({
           </svg>
           <div>
             <p className="font-medium text-green-600 dark:text-green-400">
-              ✓ Export completed successfully!
+              Export saved to your device
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Your video should download automatically. If not, click "Download Again" button above.
+              Server temp files are cleaned automatically after download / refresh.
             </p>
           </div>
         </div>
       )}
 
-      {captions.length > 0 && !isRendering && !downloadUrl && (
+      {captions.length > 0 && !isRendering && !exportDone && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground p-4 bg-primary/5 rounded-lg border border-primary/20">
           <svg
             className="w-5 h-5 text-primary flex-shrink-0"
@@ -308,8 +282,8 @@ const VideoPreview = ({
           <div>
             <p className="font-medium">Ready to export</p>
             <p className="text-xs mt-1">
-              Click "Export Video" to download your video with captions permanently embedded.
-              The exported video will work on any device or platform.
+              Click Export Video to burn captions in and download the MP4. Uploads are
+              temporary and removed when you refresh or leave.
             </p>
           </div>
         </div>

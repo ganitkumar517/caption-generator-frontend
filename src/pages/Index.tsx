@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import VideoUploader from "@/components/VideoUploader";
 import CaptionEditor from "@/components/CaptionEditor";
 import VideoPreview from "@/components/VideoPreview";
 import { Card } from "@/components/ui/card";
 import type { CaptionStyle } from "@/lib/captionTemplates";
+import { cleanupTempVideo } from "@/lib/sessionCleanup";
 
 export type { CaptionStyle } from "@/lib/captionTemplates";
 
@@ -21,12 +22,30 @@ const Index = () => {
   const [captions, setCaptions] = useState<Caption[]>([]);
   const [captionStyle, setCaptionStyle] = useState<CaptionStyle>("kathmandu");
   const [isGenerating, setIsGenerating] = useState(false);
+  const videoIdRef = useRef(videoId);
+  videoIdRef.current = videoId;
+
+  // Drop server temp files when the tab is closed / refreshed.
+  useEffect(() => {
+    const onPageHide = () => {
+      cleanupTempVideo(videoIdRef.current);
+    };
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, []);
 
   const handleVideoUpload = (
     url: string,
     id?: string,
     meta?: { duration?: number; originalDuration?: number; trimmed?: boolean }
   ) => {
+    // Replacing an upload — free the previous temp video immediately.
+    if (videoId && id && videoId !== id) {
+      cleanupTempVideo(videoId);
+    }
+
     setVideoUrl(url);
     setVideoId(id || "");
     setVideoDuration(meta?.duration);
