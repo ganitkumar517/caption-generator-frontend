@@ -3,6 +3,9 @@ import VideoUploader from "@/components/VideoUploader";
 import CaptionEditor from "@/components/CaptionEditor";
 import VideoPreview from "@/components/VideoPreview";
 import { Card } from "@/components/ui/card";
+import type { CaptionStyle } from "@/lib/captionTemplates";
+
+export type { CaptionStyle } from "@/lib/captionTemplates";
 
 export interface Caption {
   id: string;
@@ -11,18 +14,22 @@ export interface Caption {
   text: string;
 }
 
-export type CaptionStyle = "bottom-subtitle" | "top-bar" | "karaoke";
-
 const Index = () => {
   const [videoUrl, setVideoUrl] = useState<string>("");
   const [videoId, setVideoId] = useState<string>("");
+  const [videoDuration, setVideoDuration] = useState<number | undefined>();
   const [captions, setCaptions] = useState<Caption[]>([]);
-  const [captionStyle, setCaptionStyle] = useState<CaptionStyle>("bottom-subtitle");
+  const [captionStyle, setCaptionStyle] = useState<CaptionStyle>("kathmandu");
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const handleVideoUpload = (url: string, id: string) => {
+  const handleVideoUpload = (
+    url: string,
+    id?: string,
+    meta?: { duration?: number; originalDuration?: number; trimmed?: boolean }
+  ) => {
     setVideoUrl(url);
-    setVideoId(id);
+    setVideoId(id || "");
+    setVideoDuration(meta?.duration);
     setCaptions([]); // Reset captions when new video is uploaded
   };
 
@@ -41,7 +48,7 @@ const Index = () => {
                 Remotion Caption Studio
               </h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Auto-generate captions with Hinglish support
+                Auto-generate captions in Hindi, English, Spanish & more · max 60s
               </p>
             </div>
           </div>
@@ -67,6 +74,7 @@ const Index = () => {
                 setCaptions={setCaptions}
                 captionStyle={captionStyle}
                 setCaptionStyle={setCaptionStyle}
+                videoId={videoId}
               />
             )}
           </div>
@@ -78,6 +86,8 @@ const Index = () => {
                 videoUrl={videoUrl}
                 captions={captions}
                 captionStyle={captionStyle}
+                videoId={videoId}
+                durationSeconds={videoDuration}
               />
             ) : (
               <Card className="p-12 flex flex-col items-center justify-center min-h-[600px] bg-card/50 border-dashed">
@@ -102,8 +112,9 @@ const Index = () => {
                       Upload a video to get started
                     </h3>
                     <p className="text-muted-foreground max-w-md mx-auto">
-                      Upload your MP4 video, auto-generate captions, and customize the style.
-                      Full support for Hindi, English, and Hinglish.
+                      Upload your MP4 video (up to 60 seconds — longer videos are
+                      auto-trimmed), pick a language, auto-generate captions, and
+                      customize the style.
                     </p>
                   </div>
                 </div>

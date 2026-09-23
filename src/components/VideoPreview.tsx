@@ -3,36 +3,105 @@ import { Button } from "@/components/ui/button";
 import { Download, Loader2 } from "lucide-react";
 import { Player } from "@remotion/player";
 import { VideoComposition } from "@/remotion/VideoComposition";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import type { Caption, CaptionStyle } from "@/pages/Index";
 import { useExportVideoMutation } from "@/services/api";
+
+const FPS = 30;
+export const MAX_VIDEO_DURATION_SECONDS = 60;
 
 interface VideoPreviewProps {
   videoUrl: string;
   captions: Caption[];
   captionStyle: CaptionStyle;
   videoId?: string;
+  durationSeconds?: number;
 }
 
-const VideoPreview = ({ videoUrl, captions, captionStyle, videoId }: VideoPreviewProps) => {
+const VideoPreview = ({
+  videoUrl,
+  captions,
+  captionStyle,
+  videoId,
+  durationSeconds,
+}: VideoPreviewProps) => {
   const [isRendering, setIsRendering] = useState(false);
   const [downloadUrl, setDownloadUrl] = useState<string>("");
+  const [durationInFrames, setDurationInFrames] = useState(
+    Math.ceil(MAX_VIDEO_DURATION_SECONDS * FPS)
+  );
+  const [resolvedDuration, setResolvedDuration] = useState<number>(
+    durationSeconds ?? MAX_VIDEO_DURATION_SECONDS
+  );
   const { toast } = useToast();
 
   const [exportVideo] = useExportVideoMutation();
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const applyDuration = (seconds: number) => {
+      const capped = Math.min(
+        Math.max(seconds || MAX_VIDEO_DURATION_SECONDS, 1),
+        MAX_VIDEO_DURATION_SECONDS
+      );
+      if (cancelled) return;
+      setResolvedDuration(capped);
+      setDurationInFrames(Math.max(1, Math.ceil(capped * FPS)));
+    };
+
+    if (durationSeconds && durationSeconds > 0) {
+      applyDuration(durationSeconds);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.src = videoUrl;
+    video.onloadedmetadata = () => {
+      applyDuration(video.duration);
+    };
+    video.onerror = () => {
+      applyDuration(MAX_VIDEO_DURATION_SECONDS);
+    };
+
+    return () => {
+      cancelled = true;
+      video.src = "";
+    };
+  }, [videoUrl, durationSeconds]);
+
+  const triggerFileDownload = async (url: string, filename: string) => {
+    // Fetch as blob so download stays in this tab (cross-origin <a download> opens/plays instead).
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Download failed (${response.status})`);
+    }
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = filename || "captioned-video.mp4";
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(blobUrl);
+  };
+
   const handleExport = async () => {
     setIsRendering(true);
-    setDownloadUrl(""); // Reset previous download URL
+    setDownloadUrl("");
 
     toast({
       title: "Export started",
-      description: "Your video is being rendered with captions. This may take a few minutes.",
+      description: "Burning captions into your video. Download starts when ready.",
     });
 
     try {
-      // Use RTK Query mutation instead of fetch
       const result = await exportVideo({
         videoUrl,
         videoId,
@@ -40,30 +109,22 @@ const VideoPreview = ({ videoUrl, captions, captionStyle, videoId }: VideoPrevie
         captionStyle,
       }).unwrap();
 
-      console.log('Export successful:', result);
+      console.log("Export successful:", result);
 
+      const filename = result.filename || "captioned-video.mp4";
       setDownloadUrl(result.downloadUrl);
+
+      await triggerFileDownload(result.downloadUrl, filename);
 
       toast({
         title: "Export complete!",
-        description: "Your captioned video is ready for download",
+        description: "Choose where to save your captioned MP4.",
       });
-
-      // Auto-download after 1 second
-      setTimeout(() => {
-        const link = document.createElement('a');
-        link.href = result.downloadUrl;
-        link.download = result.filename || 'captioned-video.mp4';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      }, 1000);
-
     } catch (error: any) {
-      console.error('Export error:', error);
+      console.error("Export error:", error);
 
-      let errorMessage = 'Failed to export video';
-      let errorDescription = 'Please try again';
+      let errorMessage = "Failed to export video";
+      let errorDescription = "Please try again";
 
       if (
         error &&
@@ -75,20 +136,20 @@ const VideoPreview = ({ videoUrl, captions, captionStyle, videoId }: VideoPrevie
         if (data.details || data.error) {
           errorDescription = data.details || data.error;
         }
-        if (data.error?.includes('FFmpeg')) {
-          errorMessage = 'Video encoding failed';
-          errorDescription = 'Make sure FFmpeg is installed on the server';
-        } else if (data.error?.includes('captions')) {
-          errorMessage = 'No captions found';
-          errorDescription = 'Please generate captions first';
+        if (data.error?.includes("FFmpeg")) {
+          errorMessage = "Video encoding failed";
+          errorDescription = "Make sure FFmpeg is installed on the server";
+        } else if (data.error?.includes("captions")) {
+          errorMessage = "No captions found";
+          errorDescription = "Please generate captions first";
         }
       } else if (error instanceof Error) {
-        if (error.message.includes('FFmpeg')) {
-          errorMessage = 'Video encoding failed';
-          errorDescription = 'Make sure FFmpeg is installed on the server';
-        } else if (error.message.includes('captions')) {
-          errorMessage = 'No captions found';
-          errorDescription = 'Please generate captions first';
+        if (error.message.includes("FFmpeg")) {
+          errorMessage = "Video encoding failed";
+          errorDescription = "Make sure FFmpeg is installed on the server";
+        } else if (error.message.includes("captions")) {
+          errorMessage = "No captions found";
+          errorDescription = "Please generate captions first";
         } else {
           errorDescription = error.message;
         }
@@ -104,14 +165,17 @@ const VideoPreview = ({ videoUrl, captions, captionStyle, videoId }: VideoPrevie
     }
   };
 
-  const handleDownload = () => {
-    if (downloadUrl) {
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = 'captioned-video.mp4';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+  const handleDownload = async () => {
+    if (!downloadUrl) return;
+    try {
+      await triggerFileDownload(downloadUrl, "captioned-video.mp4");
+    } catch (error) {
+      console.error("Download error:", error);
+      toast({
+        title: "Download failed",
+        description: "Could not save the video. Try Export again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -121,7 +185,10 @@ const VideoPreview = ({ videoUrl, captions, captionStyle, videoId }: VideoPrevie
         <div>
           <h2 className="text-lg font-semibold">Preview</h2>
           <p className="text-sm text-muted-foreground">
-            See how your captions will look
+            See how your captions will look · {resolvedDuration.toFixed(1)}s
+            {resolvedDuration >= MAX_VIDEO_DURATION_SECONDS - 0.05
+              ? ` (max ${MAX_VIDEO_DURATION_SECONDS}s)`
+              : ""}
           </p>
         </div>
 
@@ -161,14 +228,15 @@ const VideoPreview = ({ videoUrl, captions, captionStyle, videoId }: VideoPrevie
 
       <div className="aspect-video bg-black rounded-lg overflow-hidden">
         <Player
+          key={`${videoUrl}-${durationInFrames}-${captionStyle}`}
           component={VideoComposition}
           inputProps={{
             videoUrl,
             captions,
             captionStyle,
           }}
-          durationInFrames={300} // 10 seconds at 30fps - adjust based on actual video
-          fps={30}
+          durationInFrames={durationInFrames}
+          fps={FPS}
           compositionWidth={1920}
           compositionHeight={1080}
           style={{

@@ -11,6 +11,10 @@ export interface Video {
     id: string;
     url: string;
     filename: string;
+    duration?: number;
+    originalDuration?: number;
+    trimmed?: boolean;
+    maxDuration?: number;
 }
 
 export interface UploadVideoResponse {
@@ -21,6 +25,7 @@ export interface UploadVideoResponse {
 export interface GenerateCaptionsRequest {
     videoUrl: string;
     videoId?: string;
+    language?: string;
 }
 
 export interface GenerateCaptionsResponse {
@@ -71,7 +76,7 @@ export const api = createApi({
             invalidatesTags: ['Captions'],
         }),
         exportVideo: builder.mutation<
-            { downloadUrl: string; filename?: string },
+            { downloadUrl: string; filename?: string; mode?: string; message?: string },
             { videoUrl: string; videoId?: string; captions: Caption[]; captionStyle: string }
         >({
             query: ({ videoUrl, videoId, captions, captionStyle }) => ({
